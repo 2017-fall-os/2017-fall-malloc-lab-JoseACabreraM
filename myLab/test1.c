@@ -16,7 +16,7 @@ void getutime1(struct timeval *t) {
     *t = usage.ru_utime;
 }
 
-int main2() {
+int main() {
     void *p1, *p2, *p3;
     arenaCheck();
     p1 = malloc(254);
