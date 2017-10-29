@@ -9,7 +9,7 @@
 /* first, the standard malloc functions */
 
 void *malloc(size_t NBYTES) {
-    return firstFitAllocRegion(NBYTES);
+    return bestFitAllocRegion(NBYTES);
 }
 
 void *realloc(void *APTR, size_t NBYTES) {

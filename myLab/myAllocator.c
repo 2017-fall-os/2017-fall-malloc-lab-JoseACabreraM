@@ -147,9 +147,8 @@ BlockPrefix_t *growArena(size_t s) { /* this won't work under cygwin since runti
 
 
 int pcheck(void *p) {        /* check that pointer is within arena */
-    return (p >= (void *) arenaBegin && p < (void *) arenaEnd);
+    return (p >= (void *) arenaBegin && p < arenaEnd);
 }
-
 
 void arenaCheck() {        /* consistency check */
     BlockPrefix_t *p = arenaBegin;
@@ -191,16 +190,22 @@ BlockPrefix_t *findFirstFit(size_t s) {    /* find first block with usable space
     return growArena(s);
 }
 
+// Find the block that best fits request s
 BlockPrefix_t *findBestFit(size_t s) {
-    BlockPrefix_t *p = arenaBegin;
-    BlockPrefix_t *bestFit = NULL;
-    int minUsableSpace = INT_MAX;
+    BlockPrefix_t *p = arenaBegin; // To traverse available blocks
+    BlockPrefix_t *bestFit = NULL; // To store best block
+    int minUsableSpace = INT_MAX; // To keep track of best block
+    // Traverse blocks
     while (p) {
         if (!p->allocated) {
             int space = (int) computeUsableSpace(p);
             if (space == s) {
-                return p;
+                return p; // If a perfect fit is found, return it directly
             } else {
+                /* 
+                  If current block is bigger than s but smaller than our 
+                  currently assummed best fit, make it our new best fit
+                */
                 if (space < minUsableSpace && space > s) {
                     minUsableSpace = space;
                     bestFit = p;
@@ -315,6 +320,12 @@ void *oldResizeRegion(void *r, size_t newSize) {
     }
 }
 
+/* 
+  New implementation of resize region. Instead of always allocation a new section and copying the old contents of 
+  r into a new block of memory, it'll verify if there is available space in r's successor and predecessor blocks
+  and grow r accordingly. If there is no space available in r's neighbords, only then will new memory will be allocated
+  for r to grow.   
+*/
 void *resizeRegion(void *r, size_t newSize) {
     int oldSize;
     if (r != (void *) 0)        /* old region existed */
@@ -323,57 +334,37 @@ void *resizeRegion(void *r, size_t newSize) {
         oldSize = 0;        /* non-existant regions have size 0 */
     if (oldSize >= newSize)    /* old region is big enough */
         return r;
-    else {            /* allocate new region & copy old data */
-        int sumSize;
-        BlockPrefix_t *currentPrefix = regionToPrefix(r);
-        BlockPrefix_t *pastBlock = getPrevPrefix(currentPrefix);
-        if (pastBlock && !pastBlock->allocated) {
-            sumSize = (int) (computeUsableSpace(pastBlock) + computeUsableSpace(currentPrefix));
-            if (sumSize >= newSize) {
-                currentPrefix->allocated = 0;
-                currentPrefix = coalescePrev(currentPrefix);
-                currentPrefix->allocated = 1;
-                return prefixToRegion(currentPrefix);
-            }
-        }
-        BlockPrefix_t *nextBlock = getNextPrefix(currentPrefix);
+    else {
+        int sumSize; // To store the available size if r where to merge with a neighbor
+        BlockPrefix_t *currentPrefix = regionToPrefix(r); // Stores r as a block instead of region
+        BlockPrefix_t *nextBlock = getNextPrefix(currentPrefix); // Stores r's successor
         if (nextBlock && !nextBlock->allocated) {
             sumSize = (int) (computeUsableSpace(nextBlock) + computeUsableSpace(currentPrefix));
+            // Figure out if there is enough space to fit the request if r where to merge with its successor
             if (sumSize >= newSize) {
+                // Calculate the amount needed from the successor to fulfill the request
                 int aSize = align8((int) (newSize - computeUsableSpace(currentPrefix)));
                 size_t availSize = computeUsableSpace(nextBlock);
-                if (availSize >= (aSize + 8)) { /* split block? */
+                // Create a new block out of r's successor with the required space to fulfill the request
+                if (availSize >= (aSize + 8)) {
+                    /* split block? */
                     void *freeSliverStart = (void *) nextBlock + aSize;
                     void *freeSliverEnd = computeNextPrefixAddr(nextBlock);
                     makeFreeBlock(freeSliverStart, freeSliverEnd - freeSliverStart);
                     makeFreeBlock(nextBlock, freeSliverStart - (void *) nextBlock); /* piece being allocated */
                 }
+                // Temporarily change r's status to unallocated, needed for coalescing
                 currentPrefix->allocated = 0;
+                // Coalesce r and the newly created successor block
                 currentPrefix = coalescePrev(nextBlock);
+                // Restore r's status to allocated
                 currentPrefix->allocated = 1;
-                return prefixToRegion(currentPrefix);
-            }
-        }
-        if (nextBlock && pastBlock && !nextBlock->allocated && !pastBlock->allocated) {
-            sumSize = (int) (computeUsableSpace(pastBlock) + computeUsableSpace(nextBlock) +
-                             computeUsableSpace(currentPrefix));
-            if (sumSize >= newSize) {
-                int aSize = align8((int) (newSize - computeUsableSpace(currentPrefix)));
-                size_t availSize = computeUsableSpace(nextBlock);
-                if (availSize >= (aSize + 8)) {
-                    void *freeSliverStart = (void *) nextBlock + aSize;
-                    void *freeSliverEnd = computeNextPrefixAddr(nextBlock);
-                    makeFreeBlock(freeSliverStart, freeSliverEnd - freeSliverStart);
-                    makeFreeBlock(nextBlock, freeSliverStart - (void *) nextBlock);
-                }
-                currentPrefix->allocated = 0;
-                coalesce(currentPrefix);
-                currentPrefix->allocated = 1;
+                // Return the newly expanded region r
                 return prefixToRegion(currentPrefix);
             }
         }
         char *o = (char *) r;    /* treat both regions as char* */
-        char *n = (char *) firstFitAllocRegion(newSize);
+        char *n = (char *) bestFitAllocRegion(newSize);
         int i;
         for (i = 0; i < oldSize; i++) /* copy byte-by-byte, should use memcpy */
             n[i] = o[i];

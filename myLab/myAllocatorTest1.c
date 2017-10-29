@@ -17,11 +17,7 @@ void getutime(struct timeval *t) {
 }
 
 int main() {
-  
   void *p1, *p2, *p3, *p4;
-
-    
-  
   p1 = bestFitAllocRegion(254);
   arenaCheck();
   p2 = bestFitAllocRegion(25400);
@@ -34,7 +30,6 @@ int main() {
   freeRegion(p3);
   arenaCheck();
   freeRegion(p1);
-  
     
   {                /* measure time for 10000 mallocs */
     struct timeval t1, t2;
