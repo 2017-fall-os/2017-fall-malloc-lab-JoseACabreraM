@@ -17,30 +17,20 @@ void getutime(struct timeval *t) {
 }
 
 int main() {
-    /*
-  void *p1, *p2, *p3;
-  arenaCheck();
-  p1 = firstFitAllocRegion(254);
-  arenaCheck();
-  p2 = firstFitAllocRegion(25400);
-  arenaCheck();
-  p3 = firstFitAllocRegion(254);
-  printf("%8zx %8zx %8zx\n", p1, p2, p3);
-  arenaCheck();
-  freeRegion(p2);
-  arenaCheck();
-  freeRegion(p3);
-  arenaCheck();
-  freeRegion(p1);
-    */
-
-    void *p1;
+    void *p1, *p2, *p3;
     arenaCheck();
     p1 = firstFitAllocRegion(254);
     arenaCheck();
-    p1 = optimizedResizeRegion(p1, 25400);
+    p2 = firstFitAllocRegion(25400);
     arenaCheck();
-
+    p3 = firstFitAllocRegion(254);
+    printf("%8zx %8zx %8zx\n", p1, p2, p3);
+    arenaCheck();
+    freeRegion(p2);
+    arenaCheck();
+    freeRegion(p3);
+    arenaCheck();
+    freeRegion(p1);
     {                /* measure time for 10000 mallocs */
         struct timeval t1, t2;
         int i;
@@ -52,8 +42,4 @@ int main() {
         printf("%d firstFitAllocRegion(4) required %f seconds\n", i, diffTimeval(&t2, &t1));
     }
     return 0;
-
 }
-
-
-
