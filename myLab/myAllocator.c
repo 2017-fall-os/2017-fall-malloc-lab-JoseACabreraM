@@ -326,24 +326,24 @@ void *optimizedResizeRegion(void *r, size_t newSize) {
         return r;
     else {            /* allocate new region & copy old data */
         int sumSize;
-        BlockPrefix_t* nextBlock = getNextPrefix(r);
-        if (nextBlock != NULL && !nextBlock->allocated){
-            sumSize = (int) (computeUsableSpace(nextBlock) + computeUsableSpace(r));
+        BlockPrefix_t* nextBlock = getNextPrefix(regionToPrefix(r));
+        if (nextBlock && !nextBlock->allocated){
+            sumSize = (int) (computeUsableSpace(regionToPrefix(nextBlock)) + computeUsableSpace(regionToPrefix(r)));
             if (sumSize >= newSize){
                 coalescePrev(nextBlock);
                 return r;
             }
         }
-        BlockPrefix_t* pastBlock = getPrevPrefix(r);
-        if (pastBlock != NULL && !pastBlock->allocated){
-            sumSize = (int) (computeUsableSpace(pastBlock) + computeUsableSpace(r));
+        BlockPrefix_t* pastBlock = getPrevPrefix(regionToPrefix(r));
+        if (pastBlock && !pastBlock->allocated){
+            sumSize = (int) (computeUsableSpace(regionToPrefix(pastBlock)) + computeUsableSpace(regionToPrefix(r)));
             if (sumSize >= newSize){
                 coalescePrev(r);
                 return r;
             }
         }
-        if(nextBlock != NULL && pastBlock != NULL && !nextBlock->allocated && !pastBlock->allocated){
-            sumSize = (int) (computeUsableSpace(pastBlock) + computeUsableSpace(nextBlock) + computeUsableSpace(r));
+        if(nextBlock && pastBlock && !nextBlock->allocated && !pastBlock->allocated){
+            sumSize = (int) (computeUsableSpace(regionToPrefix(pastBlock)) + computeUsableSpace(regionToPrefix(nextBlock)) + computeUsableSpace(regionToPrefix(r)));
             if (sumSize >= newSize){
                 coalesce(r);
                 return r;
