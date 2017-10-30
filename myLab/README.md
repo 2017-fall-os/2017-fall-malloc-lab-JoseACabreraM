@@ -26,6 +26,11 @@ replacement and myAllocatorTest1 uses myAllocator directly.
   Gabriel Maximilian Felix and I worked together to figure out how to merge a block 
   with it's successor.
   
+10/28/2017
+
+  Added resizeRegionExtra. This new memory reallocator now tries merging a block with both
+  its predecessor and successor blocks, even trying to merge with both. 
+  
 Makefile: a fairly portable "makefile", targets "all" and "clean"
 
 To compile: 
