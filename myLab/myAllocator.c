@@ -116,13 +116,15 @@ BlockPrefix_t *coalescePrev(BlockPrefix_t *p) {    /* coalesce p with prev, retu
     return p;
 }
 
-void coalesce(BlockPrefix_t *p) {    /* coalesce p with prev & next */
+BlockPrefix_t *coalesce(BlockPrefix_t *p) {    /* coalesce p with prev & next */
     if (p != (void *) 0) {
         BlockPrefix_t *next;
         p = coalescePrev(p);
         next = getNextPrefix(p);
-        if (next)
-            coalescePrev(next);
+        if (next) {
+            p = coalescePrev(next);
+        }
+        return p;
     }
 }
 
@@ -202,8 +204,8 @@ BlockPrefix_t *findBestFit(size_t s) {
             if (space == s) {
                 return p; // If a perfect fit is found, return it directly
             } else {
-                /* 
-                  If current block is bigger than s but smaller than our 
+                /*
+                  If current block is bigger than s but smaller than our
                   currently assummed best fit, make it our new best fit
                 */
                 if (space < minUsableSpace && space > s) {
@@ -320,11 +322,11 @@ void *oldResizeRegion(void *r, size_t newSize) {
     }
 }
 
-/* 
-  New implementation of resize region. Instead of always allocation a new section and copying the old contents of 
+/*
+  New implementation of resize region. Instead of always allocation a new section and copying the old contents of
   r into a new block of memory, it'll verify if there is available space in r's successor and predecessor blocks
   and grow r accordingly. If there is no space available in r's neighbords, only then will new memory will be allocated
-  for r to grow.   
+  for r to grow.
 */
 void *resizeRegion(void *r, size_t newSize) {
     int oldSize;
@@ -338,13 +340,15 @@ void *resizeRegion(void *r, size_t newSize) {
         int sumSize; // To store the available size if r where to merge with a neighbor
         BlockPrefix_t *currentPrefix = regionToPrefix(r); // Stores r as a block instead of region
         BlockPrefix_t *nextBlock = getNextPrefix(currentPrefix); // Stores r's successor
+        size_t usableSpaceNext = computeUsableSpace(nextBlock);
+        size_t usableSpaceCurrent = computeUsableSpace(currentPrefix);
         if (nextBlock && !nextBlock->allocated) {
-            sumSize = (int) (computeUsableSpace(nextBlock) + computeUsableSpace(currentPrefix));
+            sumSize = (int) (usableSpaceNext + usableSpaceCurrent);
             // Figure out if there is enough space to fit the request if r where to merge with its successor
             if (sumSize >= newSize) {
                 // Calculate the amount needed from the successor to fulfill the request
-                int aSize = align8((int) (newSize - computeUsableSpace(currentPrefix)));
-                size_t availSize = computeUsableSpace(nextBlock);
+                int aSize = align8((int) (newSize - usableSpaceCurrent));
+                size_t availSize = usableSpaceNext;
                 // Create a new block out of r's successor with the required space to fulfill the request
                 if (availSize >= (aSize + 8)) {
                     /* split block? */
@@ -361,6 +365,138 @@ void *resizeRegion(void *r, size_t newSize) {
                 currentPrefix->allocated = 1;
                 // Return the newly expanded region r
                 return prefixToRegion(currentPrefix);
+            }
+        }
+        char *o = (char *) r;    /* treat both regions as char* */
+        char *n = (char *) bestFitAllocRegion(newSize);
+        int i;
+        for (i = 0; i < oldSize; i++) /* copy byte-by-byte, should use memcpy */
+            n[i] = o[i];
+        freeRegion(o);        /* free old region */
+        return (void *) n;
+    }
+}
+
+
+/*
+    A version of resize region with added features. It now also tries to merge with the predecessor block instead of just
+    checking the successor. It will also try to merge with both if available.
+*/
+void *resizeRegionExtra(void *r, size_t newSize) {
+    int oldSize;
+    if (r != (void *) 0)        /* old region existed */
+        oldSize = (int) computeUsableSpace(regionToPrefix(r));
+    else
+        oldSize = 0;        /* non-existant regions have size 0 */
+    if (oldSize >= newSize)    /* old region is big enough */
+        return r;
+    else {
+        BlockPrefix_t *currentPrefix = regionToPrefix(r); // Stores r as a block instead of region
+        BlockPrefix_t *nextBlock = getNextPrefix(currentPrefix); // Stores r's successor
+        int sumSize;
+        size_t usableSpaceNext = computeUsableSpace(nextBlock), usableSpaceCurrent = computeUsableSpace(currentPrefix);
+        if (nextBlock && !nextBlock->allocated) {
+            sumSize = (int) (usableSpaceNext + usableSpaceCurrent);
+            // Figure out if there is enough space to fit the request if r where to merge with its successor
+            if (sumSize >= newSize) {
+                // Calculate the amount needed from the successor to fulfill the request
+                int aSize = align8((int) (newSize - usableSpaceCurrent));
+                size_t availSize = (size_t) usableSpaceNext;
+                // Create a new block out of r's successor with the required space to fulfill the request
+                if (availSize >= (aSize + 8)) {
+                    /* split block? */
+                    void *freeSliverStart = (void *) nextBlock + aSize;
+                    void *freeSliverEnd = computeNextPrefixAddr(nextBlock);
+                    makeFreeBlock(freeSliverStart, freeSliverEnd - freeSliverStart);
+                    makeFreeBlock(nextBlock, freeSliverStart - (void *) nextBlock); /* piece being allocated */
+                }
+                // Temporarily change r's status to unallocated, needed for coalescing
+                currentPrefix->allocated = 0;
+                // Coalesce r and the newly created successor block
+                currentPrefix = coalescePrev(nextBlock);
+                // Restore r's status to allocated
+                currentPrefix->allocated = 1;
+                // Return the newly expanded region r
+                return prefixToRegion(currentPrefix);
+            }
+        }
+        // Try to merge with the previous block
+        BlockPrefix_t *pastBlock = getPrevPrefix(currentPrefix); // Stores r's predecessor
+        size_t usableSpacePast = computeUsableSpace(pastBlock);
+        if (pastBlock && !pastBlock->allocated) {
+            sumSize = (int) (usableSpacePast + usableSpaceCurrent);
+            // Figure out if there is enough space to fit the request if r where to merge with its predecessor
+            if (sumSize >= newSize) {
+                // Calculate the amount needed from the predecessor to fulfill the request
+                int missingSize = (int) align8(newSize - usableSpaceCurrent);
+                size_t aSize = align8(usableSpacePast - missingSize);
+                size_t availSize = (size_t) usableSpacePast;
+                // Create a new block out of r's predecessor with the inverse required space to fulfill the request
+                if (availSize >= (aSize + 8)) {
+                    /* split block? */
+                    void *freeSliverStart = (void *) pastBlock + prefixSize + suffixSize + aSize;
+                    void *freeSliverEnd = computeNextPrefixAddr(pastBlock);
+                    makeFreeBlock(freeSliverStart, freeSliverEnd - freeSliverStart);
+                    makeFreeBlock(pastBlock, freeSliverStart - (void *) pastBlock); /* piece being allocated */
+                }
+                // Temporarily change r's status to unallocated, needed for coalescing
+                currentPrefix->allocated = 0;
+                // Coalesce r and the newly created predecessor block
+                currentPrefix = coalescePrev(currentPrefix);
+                // Restore r's status to allocated
+                currentPrefix->allocated = 1;
+                // Return the newly expanded region r
+                return prefixToRegion(currentPrefix);
+            }
+        }
+        // Try to merge both previous and next blocks
+        if (pastBlock && !pastBlock->allocated && nextBlock && !nextBlock->allocated) {
+            sumSize = (int) (usableSpacePast + usableSpaceNext + usableSpaceCurrent);
+            if (sumSize >= newSize) {
+                if (usableSpacePast > usableSpaceNext) {
+                    // Calculate the amount needed from the predecessor to fulfill the request
+                    int missingSize = (int) align8(
+                            newSize - usableSpaceCurrent - usableSpaceNext - prefixSize - suffixSize);
+                    int aSize = align8((int) (usableSpacePast - missingSize));
+                    size_t availSize = (size_t) usableSpacePast;
+                    // Create a new block out of r's predecessor with the inverse required space to fulfill the request
+                    if (availSize >= (aSize + 8)) {
+                        /* split block? */
+                        void *freeSliverStart = (void *) pastBlock + aSize + prefixSize + suffixSize;
+                        void *freeSliverEnd = computeNextPrefixAddr(pastBlock);
+                        makeFreeBlock(freeSliverStart, freeSliverEnd - freeSliverStart);
+                        makeFreeBlock(pastBlock, freeSliverStart - (void *) pastBlock); /* piece being allocated */
+                    }
+                    // Temporarily change r's status to unallocated, needed for coalescing
+                    currentPrefix->allocated = 0;
+                    // Coalesce r by fulling merging with the successor and the newly shortened predecessor block
+                    currentPrefix = coalesce(currentPrefix);
+                    // Restore r's status to allocated
+                    currentPrefix->allocated = 1;
+                    // Return the newly expanded region r
+                    return prefixToRegion(currentPrefix);
+                } else {
+                    // Calculate the amount needed from the predecessor to fulfill the request
+                    int missingSize = (int) align8(usableSpaceCurrent + usableSpacePast);
+                    int aSize = align8((int) (newSize - missingSize));
+                    size_t availSize = (size_t) usableSpaceNext;
+                    // Create a new block out of r's predecessor with the inverse required space to fulfill the request
+                    if (availSize >= (aSize + 8)) {
+                        /* split block? */
+                        void *freeSliverStart = (void *) nextBlock + aSize - (prefixSize + suffixSize);
+                        void *freeSliverEnd = computeNextPrefixAddr(nextBlock);
+                        makeFreeBlock(freeSliverStart, freeSliverEnd - freeSliverStart);
+                        makeFreeBlock(nextBlock, freeSliverStart - (void *) nextBlock); /* piece being allocated */
+                    }
+                    // Temporarily change r's status to unallocated, needed for coalescing
+                    currentPrefix->allocated = 0;
+                    // Coalesce r by fulling merging with the predecessor and the newly allocated successor block
+                    currentPrefix = coalesce(currentPrefix);
+                    // Restore r's status to allocated
+                    currentPrefix->allocated = 1;
+                    // Return the newly expanded region r
+                    return prefixToRegion(currentPrefix);
+                }
             }
         }
         char *o = (char *) r;    /* treat both regions as char* */

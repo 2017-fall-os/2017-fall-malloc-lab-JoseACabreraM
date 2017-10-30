@@ -19,7 +19,6 @@ void *bestFitAllocRegion(size_t s);
 
 void freeRegion(void *r);
 
-
 size_t computeUsableSpace(BlockPrefix_t *p);
 
 BlockPrefix_t *regionToPrefix(void *r);
@@ -27,5 +26,7 @@ BlockPrefix_t *regionToPrefix(void *r);
 void *oldResizeRegion(void *r, size_t newSize);
 
 void *resizeRegion(void *r, size_t newSize);
+
+void *resizeRegionExtra(void *r, size_t newSize);
 
 #endif // myAllocator_H
