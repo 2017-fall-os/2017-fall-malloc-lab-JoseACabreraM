@@ -18,18 +18,18 @@ replacement and myAllocatorTest1 uses myAllocator directly.
 
 10/28/2017
 
-  myAllocator.c has now been modified to provided an alternative allocation
-  algorithm, bestFit. The memory allocator has also been modified to work 
-  more efficiently by trying to merge a block with its successor when possible
-  instead of always allocating new memory and copying the old block's contents. 
+    myAllocator.c has now been modified to provided an alternative allocation
+    algorithm, bestFit. The memory allocator has also been modified to work 
+    more efficiently by trying to merge a block with its successor when possible
+    instead of always allocating new memory and copying the old block's contents. 
 
-  Gabriel Maximilian Felix and I worked together to figure out how to merge a block 
-  with it's successor.
-  
+    Gabriel Maximilian Felix and I worked together to figure out how to merge a block 
+    with it's successor.
+
 10/28/2017
 
-  Added resizeRegionExtra. This new memory reallocator now tries merging a block with both
-  its predecessor and successor blocks, even trying to merge with both. 
+    Added resizeRegionExtra. This new memory reallocator now tries merging a block with both
+    its predecessor and successor blocks, even trying to merge with both. 
   
 Makefile: a fairly portable "makefile", targets "all" and "clean"
 
