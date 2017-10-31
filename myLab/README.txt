@@ -30,8 +30,16 @@ replacement and myAllocatorTest1 uses myAllocator directly.
   Added resizeRegionExtra. This new memory reallocator now tries merging a block with both
   its predecessor and successor blocks, even trying to merge with both. 
 
+10/31/2017
+
+    Added proper testing for the lab in myAllocatorTest1.c and myTest1.c, to showcase my
+    implementation of bestFit allocation and my new memory reallocator. 
+  
 Makefile: a fairly portable "makefile", targets "all" and "clean"
 
+To test:
+ $ myAllocTest - Using allocator directly
+ $ myTest - Calling malloc, which calls myAllocator functions 
 To compile: 
  $ make 
 To clean:

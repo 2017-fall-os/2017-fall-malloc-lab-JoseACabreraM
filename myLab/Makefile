@@ -2,6 +2,11 @@ CFLAGS	= -g
 CC	= gcc
 OBJ	= myAllocatorTest1 test1
 
+myAllocTest: myAllocatorTest1
+		./myAllocatorTest1
+myTest: test1
+	./test1
+
 all: $(OBJ)
 
 myAllocatorTest1: myAllocator.o myAllocatorTest1.o

@@ -20,28 +20,66 @@ int main() {
     void *p1, *p2, *p3, *p4;
     arenaCheck();
     p1 = bestFitAllocRegion(56500);
-    arenaCheck();
     p2 = bestFitAllocRegion(254);
-    arenaCheck();
     p3 = bestFitAllocRegion(25400);
-    //printf("%8zx %8zx %8zx\n", p1, p2, p3);
-    arenaCheck();
-    //p2 = resizeRegion(p2, 56000);
-    arenaCheck();
     p4 = bestFitAllocRegion(254);
     arenaCheck();
+    /*
+      Old resize region will create a new region of size 1024, copy the contents of
+      p4 into the new region and unallocate the old region.
+    */
+    p4 = oldResizeRegion(p4,1024);
+    arenaCheck();
+    freeRegion(p4);
+
+    /* 
+       New region resizer will take out a chunk out of p4 successor's block in order to 
+       fulfill the reallocation request, instead of creating a new block. 
+    */
+    p4 = bestFitAllocRegion(254);
+    arenaCheck();
+    p4 = resizeRegion(p4,1024);
+    arenaCheck();
+
+    // Free p1 and p3 to have some free chunks in the middle for allocator testing 
     freeRegion(p1);
     arenaCheck();
     freeRegion(p3);
     arenaCheck();
-    p2 = resizeRegionExtra(p2, 57000);
+    
+    /* 
+       Will allocate p3 with first fit, taking it out of the first free block it finds,
+       in this case it will take 16000 out of the 56504 block left behind by p1. It then
+       frees p3 again for re-testing with best fit. 
+    */
+    p3 = firstFitAllocRegion(16000);
+    arenaCheck();
+    freeRegion(p3);
     arenaCheck();
 
-    //freeRegion(p2);
-    //arenaCheck();
-    //freeRegion(p3);
-    //arenaCheck();
-    //freeRegion(p1);
+    /* 
+       Will allocate p3 with best fit, in this case figuring out that it's better to take
+       out a chunk out of the 25400 free block instead of the 56504 block since it better
+       fits the request for 16000 bytes. 
+    */
+    p3 = bestFitAllocRegion(16000);
+    arenaCheck();
+    freeRegion(p3);
+    arenaCheck();
+
+    /*
+      Uses my extra reallocator function, which will try to merge a block with both its
+      successor and predecessor in order to fulfill a reallocation request. In this case, 
+      p2, of size 256 bytes,  will be reallocated to 58000 but it can't fulfill the request
+      by just merging with either its successor, which has 25400 bytes available, or its 
+      predecessor, which has 56504 bytes available. But it can fulfill the request by fully
+      coalescing with its successor and then take out the remaining part from its predecessor.
+    */
+    p2 = resizeRegionExtra(p2, 58000);
+    arenaCheck();
+
+    freeRegion(p2);
+    freeRegion(p4);
 
     {                /* measure time for 10000 mallocs */
         struct timeval t1, t2;
@@ -49,6 +87,16 @@ int main() {
         getutime(&t1);
         for (i = 0; i < 10000; i++)
             if (firstFitAllocRegion(4) == 0)
+                break;
+        getutime(&t2);
+        printf("%d firstFitAllocRegion(4) required %f seconds\n", i, diffTimeval(&t2, &t1));
+    }
+    {                /* measure time for 10000 mallocs */
+        struct timeval t1, t2;
+        int i;
+        getutime(&t1);
+        for (i = 0; i < 10000; i++)
+            if (bestFitAllocRegion(4) == 0)
                 break;
         getutime(&t2);
         printf("%d bestFitAllocRegion(4) required %f seconds\n", i, diffTimeval(&t2, &t1));
